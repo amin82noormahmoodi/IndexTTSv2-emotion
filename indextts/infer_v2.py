@@ -701,13 +701,38 @@ def find_most_similar_cosine(query_vector, matrix):
 class QwenEmotion:
     def __init__(self, model_dir):
         self.model_dir = model_dir
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir, trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_dir,
-            torch_dtype="float16",  # "auto"
-            device_map="auto",
-            trust_remote_code=True
-        )
+        self.tokenizer = None
+        self.model = None
+        # Try local checkpoint (may be qwen3). If it fails, fall back to a public instruct model.
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir, trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_dir,
+                torch_dtype="float16",
+                device_map="auto",
+                trust_remote_code=True,
+            )
+        except Exception as e:
+            print(f">> Failed to load local Qwen emotion model from '{self.model_dir}'. Error: {e}")
+            print(
+                ">> Falling back to 'Qwen/Qwen2.5-0.5B-Instruct' for text emotion. This requires internet."
+            )
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    "Qwen/Qwen2.5-0.5B-Instruct", trust_remote_code=True
+                )
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    "Qwen/Qwen2.5-0.5B-Instruct",
+                    torch_dtype="float16",
+                    device_map="auto",
+                    trust_remote_code=True,
+                )
+            except Exception as e2:
+                print(
+                    f">> Failed to load fallback Qwen model as well. Emotion classification will be disabled. Error: {e2}"
+                )
+                self.tokenizer = None
+                self.model = None
         self.prompt = "文本情感分类"
         self.cn_key_to_en = {
             "高兴": "happy",
@@ -760,6 +785,21 @@ class QwenEmotion:
 
     def inference(self, text_input):
         start = time.time()
+        if self.model is None or self.tokenizer is None:
+            # Graceful degradation: return a neutral emotion dict
+            print(
+                ">> QwenEmotion is disabled; returning neutral emotion vector (calm=1.0)."
+            )
+            return {
+                "高兴": 0.0,
+                "愤怒": 0.0,
+                "悲伤": 0.0,
+                "恐惧": 0.0,
+                "反感": 0.0,
+                "低落": 0.0,
+                "惊讶": 0.0,
+                "自然": 1.0,
+            }
         messages = [
             {"role": "system", "content": f"{self.prompt}"},
             {"role": "user", "content": f"{text_input}"}
