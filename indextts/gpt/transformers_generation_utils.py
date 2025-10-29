@@ -25,14 +25,28 @@ import torch.distributed as dist
 from torch import nn
 from torch.nn import functional as F
 
-from transformers.cache_utils import (
-    Cache,
-    DynamicCache,
-    EncoderDecoderCache,
-    OffloadedCache,
-    QuantizedCacheConfig,
-    StaticCache,
-)
+try:
+    from transformers.cache_utils import (
+        Cache,
+        DynamicCache,
+        EncoderDecoderCache,
+        OffloadedCache,
+        QuantizedCacheConfig,
+        StaticCache,
+    )
+except ImportError:
+    # Fallback for Transformers versions where QuantizedCacheConfig has moved/been removed.
+    from transformers.cache_utils import (
+        Cache,
+        DynamicCache,
+        EncoderDecoderCache,
+        OffloadedCache,
+        StaticCache,
+    )
+
+    class QuantizedCacheConfig:  # minimal stub for compatibility
+        def __init__(self, *args, **kwargs) -> None:
+            pass
 from transformers.configuration_utils import PretrainedConfig
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
